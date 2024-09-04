@@ -10,6 +10,10 @@ import webbrowser
 import pyttsx3
 import json
 
+path = os.path.expanduser('~')
+path = path.replace("\\","/")
+path = path+"/OneDrive/Escritorio/"
+
 try:
     with open('vertex.json', 'r') as f:
         vertex = json.load(f)
@@ -34,7 +38,30 @@ else:
 
 llm = VertexAI(model_name= "text-bison")
 
-def palabras_clave(task, raices):
+def obtener_raices(verbos):
+    # Diccionario de terminaciones comunes para cada idioma
+    terminaciones = ['ar', 'er', 'ir', 'e', 'ed', 'ing', 's']
+    
+    # Asegurar que 'verbos' sea una lista
+    if isinstance(verbos, str):
+        verbos = [verbos]
+    
+    raices = []
+    
+    for verbo in verbos:
+        raiz = verbo
+        for terminacion in terminaciones:
+            if verbo.endswith(terminacion):
+                raiz = verbo[:-len(terminacion)]
+                break
+        raices.append(raiz)
+    
+    return raices
+
+def palabras_clave(task, palabras):
+    if any(palabra.endswith(terminacion) for palabra in palabras for terminacion in ['ar', 'er', 'ir', 'e', 'ed', 'ing', 's']):
+        raices = obtener_raices(palabras)
+
     # Convertir la tarea a minúsculas y eliminar caracteres no alfabéticos
     task_normalizada = re.sub(r'[^a-zA-Záéíóúñü]', ' ', task.lower())
     
@@ -69,9 +96,9 @@ def do_task(task):
     response = response.strip()
     return response
 
-def get_response(task, name):
+def get_response(task, name, completion = False):
     prompt = PromptTemplate(
-        input_variables=["task", "name"],
+        input_variables=["task", "name", "completion"],
         template="""
         You are an advanced virtual assistant with the ability to answer questions about yourself, manage documents or applications, and add events to the user's calendar. 
         Your primary function is to assist {name} in tasks related to their PC, but your capabilities will expand over time with additional functionalities. 
@@ -80,10 +107,19 @@ def get_response(task, name):
         Always remain polite and respectful in your interactions.
 
         Knowing this, please complete the next task: {task}
+
+        Also if they ever want to stop the conversation and they don't know how you explain them how to do it. To do it they should say any of the next words: 'goodbye', 'exit', 'bye', 'quit', 'stop', 'adios', 'chau', 'salir', 'hasta luego' or 'cerrar'.
+        It should be exactly one of these words, without any additional words or characters tho they can be in capital or lowercase letters. But don't be to pushy about it, if they want to continue the conversation you should let them do it.
+
+        If they want to do something lke create a folder or document you should ask them for the name of the folder or document they want to create in the same language they were using.
+        You should never give them tips to do it for themselves, that's your whole purpose to help them doing their things.
+
+        If {completion} is {True} you have just completed the task. Let {name} know that the task has been successfully completed and ask if they need any further assistance.
         """
     )
+
     # formateo la entrada del modelo
-    formatted_prompt = prompt.format(task=task, name=name)
+    formatted_prompt = prompt.format(task=task, name=name, completion=completion)
     # obtengo la respuesta del modelo
     response = llm.invoke(formatted_prompt)
     # elimino el salto de línea final
@@ -91,20 +127,18 @@ def get_response(task, name):
     return response
 
 def crear_carpeta(nombre):
-    do_task('Create a folder')
     name = input(f'{nombre}: ')
     try:
-        os.mkdir(name)
+        os.mkdir(path+name)
         return f'Folder {name} created successfully.'
     except FileExistsError:
         return f'Folder {name} already exists.'
     except Exception as e:
         return f'Error creating folder {name}: {e}'
 def crear_documento(nombre):
-    do_task('Create a document')
     name = input(f'{nombre}: ')
     try:
-        open(name, 'w+')
+        open(path+name, 'w+')
         return f'Document {name} created successfully.'
     except FileExistsError:
         return f'Document {name} already exists.'
@@ -114,17 +148,25 @@ def crear_documento(nombre):
 
 def main():
     nombre = input('Guido_AI: How should I call you? // Como debería llamarte?\n...: ')
-    print(f'Guido_AI: Hello, {nombre}! How can I help you today? // Hola, {nombre}! En qué puedo ayudarte hoy?\n')
+    #print(f'Guido_AI: Hello, {nombre}! How can I help you today? // Hola, {nombre}! En qué puedo ayudarte hoy?\n')
+    response = get_response('Saluda y pregunta que necesita el usuario usando su nombre en ambos idiomas separados por una barra /', nombre)
+    print(f'Guido_AI: {response}')
     while True:
         query = input(f'{nombre}: ')
-
         if palabras_clave(query, ['crear', 'create']):
             if palabras_clave(query, ['carpeta', 'folder']):
+                response = get_response(query, nombre)
+                print(f'Guido_AI: {response}')
                 crear_carpeta(nombre)
             elif palabras_clave(query, ['documento', 'document', 'archivo', 'file']):
+                response = get_response(query, nombre)
+                print(f'Guido_AI: {response}')
                 crear_documento(nombre)
-        response = get_response(query, nombre)
-        print(f'Guido_AI: {response}')
+            response = get_response(query, nombre, True)
+            print(f'Guido_AI: {response}')
+        else:       
+            response = get_response(query, nombre)
+            print(f'Guido_AI: {response}')
         if query.lower() in ['goodbye', 'exit', 'bye', 'quit', 'stop', 'adios', 'chau', 'salir', 'hasta luego', 'cerrar']:
             break
 
